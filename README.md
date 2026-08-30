@@ -154,7 +154,7 @@ a test rather than only as one monolithic call.
 | 7 | Only **55%** of empty room-nights trace to cancellations | Loss metric uses Rule B, not gross cancelled value |
 | 8 | A last-minute-only target covers 22% of loss and is ~7 AUC points harder | Binary target kept; economics moved to the ranking rule |
 | 10 | Short-notice cancellations are **1.5–3.7× less recoverable**, but their timing is not predictable | Not a feature; tracked as a diagnostic (§9) and answered by intervention timing, not by the model |
-| 9 | Ranking by `P(cancel) × value` beats adding a seasonal weight | Simpler rule adopted — see §9 |
+| 9 | `P(cancel) × value` adopted; a seasonal weight is unresolved — it wins or loses by test window | Simpler rule adopted, comparison reported every run — see §9 |
 | 11 | Gradient boosting leads on PR-AUC but ties logistic on the business metric | Simpler model adopted — see §8.1 |
 
 ---
@@ -281,25 +281,21 @@ interval. The result reversed the decision.
 
 | Intervention budget | logistic | hist_gbm | delta |
 |---|---|---|---|
-| 2% | **12.6%** | 11.6% | **−1.1%** |
-| 5% | 24.8% | 25.4% | +0.7% |
-| **10%** *(operating point)* | **40.4%** | 40.6% | **+0.2%** |
-| 15% | 51.7% | 52.1% | +0.4% |
-| 20% | 60.3% | **61.9%** | +1.6% |
-| 30% | 75.6% | 75.7% | +0.1% |
-| 50% | **91.9%** | 91.6% | −0.3% |
+| 5% | 27.1% | 27.1% | **−0.0%** |
+| **10%** *(operating point)* | **43.6%** | 43.9% | **+0.3%** |
+| 20% | 64.2% | **65.3%** | +1.0% |
+| 30% | **78.4%** | 77.7% | **−0.8%** |
 
 **Is that difference real?** Bootstrap over 2,000 resamples of the test set:
 
 | Budget | hist_gbm − logistic | 95% CI | hist_gbm wins |
 |---|---|---|---|
-| 5% | +0.88% | **[−0.45%, +2.21%]** | 91% of resamples |
-| **10%** | **+0.26%** | **[−0.92%, +1.48%]** | **68% of resamples** |
-| 20% | +1.64% | [+0.34%, +2.99%] | 100% of resamples |
+| 5% | +0.23% | **[−1.46%, +2.12%]** | 60% of resamples |
+| **10%** | **+0.49%** | **[−1.22%, +2.14%]** | **71% of resamples** |
+| 20% | +0.96% | **[−0.29%, +2.12%]** | 94% of resamples |
 
-At the 10% operating point the interval straddles zero and boosting wins 68% of resamples — a lean,
-not a difference. Only at a 20% budget does its advantage become statistically real, and even there it
-is 1.6 points.
+**Every interval straddles zero.** At no budget is the difference statistically distinguishable, and
+at 30% logistic is ahead by 0.8 points.
 
 **Three places logistic is actively better:**
 
@@ -307,7 +303,6 @@ is 1.6 points.
 |---|---|---|---|
 | Calibration (max gap) | **0.078** | 0.105 | The rule multiplies probability by dollars, so calibration error distorts the *ordering*, not just the scale. Both models were isotonically calibrated; logistic is still ~35% closer |
 | Calibration (mean gap) | **0.036** | 0.054 | " |
-| Airport Hotel, loss @10% | **45.3%** | 43.1% | A 2.1-point gap the blended figure hides |
 | Artefact size | **0.05 MB** | 4.66 MB | 93× smaller |
 | Scoring 1,000 bookings | **123 ms** | 186 ms | |
 
@@ -324,22 +319,20 @@ is 1.6 points.
 
 - **PR-AUC 0.623 vs 0.581 and ROC-AUC 0.834 vs 0.819.** Real and consistent — but neither is the
   decision metric.
-- **The 0–3 day notice band: 24.0% vs 20.4%.** The most expensive cancellations per booking, and the
-  model's known blind spot (§9). A modest but genuine edge.
-- **The 20% budget**, where its advantage is statistically significant.
+- **A consistent lean at the 10–20% budgets**, winning 71–94% of bootstrap resamples — real enough to
+  keep it in the registry, not enough to be statistically distinguishable.
 
 **The decision.** Logistic regression becomes the default. Paying 93× the artefact size, worse
 calibration and lost interpretability buys a difference indistinguishable from zero at the operating
 point. Gradient boosting stays in the registry, is evaluated on every run, and is one flag away
 (`--set model.name=hist_gbm`).
 
-**Revisit this if either changes:** the desk's budget moves to 20%, where boosting's edge is real; or
-the short-notice blind spot becomes the priority, where boosting is better. Both are recorded in §10.
+**Revisit this if the desk's budget moves towards 20%**, where boosting's lean is largest, or if a
+future extract shifts the picture. Recorded in §10.
 
 This is the second time in this project that the simpler option won on evidence — the first was the
-ranking rule, where adding a seasonal recoverability weight to `P(cancel) × value` made results worse.
-Neither was obvious in advance; both took a direct measurement against the business objective to
-settle.
+ranking rule, where `P(cancel) × value` was kept over a seasonally-weighted variant. Neither was
+obvious in advance; both took a direct measurement against the business objective.
 
 ---
 
@@ -366,24 +359,23 @@ two properties differ materially and a blended figure would hide it.
 
 | Model | PR-AUC | ROC-AUC | Brier | Accuracy | **Loss captured @10%** |
 |---|---|---|---|---|---|
-| **logistic (calibrated) — chosen** | 0.582 | 0.819 | 0.152 | 0.738 | **40.4%** |
-| hist_gbm | **0.625** | **0.836** | **0.149** | 0.749 | 41.4% |
-| random_forest | 0.593 | 0.810 | 0.154 | 0.745 | 38.9% |
-| lead_time_rule *(no ML)* | 0.373 | 0.658 | 0.243 | 0.718 | 25.2% |
-| value_sort *(no ML)* | 0.367 | 0.613 | 0.246 | 0.687 | 29.6% |
-| dummy_stratified | 0.287 | 0.508 | 0.329 | 0.677 | 28.8% |
-| majority | 0.282 | 0.500 | 0.202 | 0.282 | 29.6% |
+| **logistic (calibrated) — chosen** | 0.582 | 0.819 | 0.152 | 0.738 | **43.5%** |
+| hist_gbm | **0.625** | **0.836** | **0.149** | 0.749 | 43.9% |
+| lead_time_rule *(no ML)* | 0.373 | 0.658 | 0.243 | 0.718 | 26.0% |
+| value_sort *(no ML)* | 0.367 | 0.613 | 0.246 | 0.687 | 35.6% |
+| dummy_stratified | 0.287 | 0.508 | 0.329 | 0.677 | 29.8% |
+| majority | 0.282 | 0.500 | 0.202 | 0.282 | 35.6% |
 
 The baselines confirm the model is doing real work: `dummy_stratified` sits at ROC-AUC 0.508 and
 PR-AUC 0.287 — chance and the base rate respectively, exactly the floors theory predicts.
 
-**One baseline result is worth pausing on.** `dummy_stratified` captures 28.8% of the loss despite
+**One baseline result is worth pausing on.** `dummy_stratified` captures 29.8% of the loss despite
 having no information at all. That is not a bug: the ranking is `P(cancel) × value`, so even a random
-probability inherits the value signal. **The honest floor for loss capture is therefore ~29%, not
-10%**, and the model's genuine contribution is the 12.6 points above it — not the 31 points above
+probability inherits the value signal. **The honest floor for loss capture is therefore ~30%, not
+10%**, and the model's genuine contribution is the 13.7 points above it — not the 34 points above
 random flagging that a naive reading would suggest.
 
-Note also that `lead_time_rule` captures *less* loss (25.2%) than `value_sort` (29.6%) despite a
+Note also that `lead_time_rule` captures *less* loss (26.0%) than `value_sort` (35.6%) despite a
 higher PR-AUC. Lead time is the best single predictor of *whether* a booking cancels, but says nothing
 about *how much* that cancellation costs.
 
@@ -399,26 +391,32 @@ single metric would have picked differently.
 PR-AUC and ROC-AUC, but the two are statistically indistinguishable on loss capture at the operating
 point — see §8.1 for the bootstrap intervals and the reasoning behind picking the simpler model.
 
-**The honest margin is 10.8 points, not 40.** A one-line rule with no machine learning captures 29.6%
-of the loss; the model adds 10.8 points on top. That is the number worth quoting, and it is why
+**The honest margin is 7.9 points, not 43.** A one-line rule with no machine learning captures 35.6%
+of the loss; the model adds 7.9 points on top. That is the number worth quoting, and it is why
 `value_sort` is a permanent fixture of the registry rather than a footnote.
 
 Loss capture across budgets, and the ranking rules compared (§9.5 tested all three):
 
 | Intervention budget | 5% | 10% | 20% | 30% |
 |---|---|---|---|---|
-| Loss captured | 24.7% | **40.4%** | 60.3% | 75.6% |
-| Lift over random | 4.9× | 4.0× | 3.0× | 2.5× |
+| Loss captured | 27.0% | **43.5%** | 64.4% | 78.6% |
+| Lift over random | 5.4× | 4.3× | 3.2× | 2.6× |
 
 | Ranking rule | Loss captured @10% |
 |---|---|
-| **`P(cancel) × value`** — adopted | **40.4%** |
-| `booking_value` only | 29.6% |
-| `P(cancel)` only | 26.7% |
+| **`P(cancel) × value`** — adopted | **43.5%** |
+| `booking_value` only | 35.6% |
+| `P(cancel)` only | 22.4% |
 
-Ranking on probability alone gives up ~14 points, because cancelled bookings are systematically more
-valuable than honoured ones ($1,041 against $874). A seasonal recoverability weight was also tested and
-**rejected** — it captured *less* at every budget, in 100% of bootstrap resamples.
+Ranking on probability alone gives up ~21 points, because cancelled bookings are systematically more
+valuable than honoured ones ($1,041 against $874).
+
+A third rule — multiplying additionally by a seasonal recoverability weight — was tested and left
+**unresolved rather than rejected**. It beats `P(cancel) × value` on one train/test split and loses on
+another, with the model family making no difference: the split decides the answer, because a seasonal
+weight only pays for itself when the evaluation window actually contains the trough months. `P(cancel)
+× value` is adopted as the simpler rule that wins on the pipeline's own split, and all three rankings
+are reported on every run. See notebook §9.5.
 
 ### Where the "last-minute cancellations are costliest" finding went
 
@@ -431,12 +429,13 @@ tested it directly: predicting *whether* a booking cancels reaches ROC-AUC 0.787
 it will cancel *at short notice* only 0.716. Narrowing the target to short-notice cancellations also
 covers just 22% of the loss, because those cancellations are only ~16% of the total.
 
-**A seasonal proxy was tried and rejected.** Recoverability is largely driven by *when the stay falls*
-— a January cancellation is lost 4× more often than a July one — and arrival date *is* known at
-booking. So `P(cancel) × value × recoverability(month)` was tested. It captured **less** loss than
-`P(cancel) × value` at every budget, on three cut dates, in 100% of bootstrap resamples: peak nights
-carry high ADR *and* low loss probability, so the weight partly cancels the strongest available
-signal. Recorded in §0 of the notebook as a rejected approach.
+**A seasonal proxy was tried and is unresolved.** Recoverability is largely driven by *when the stay
+falls* — a January cancellation is lost 4× more often than a July one — and arrival date *is* known at
+booking. So `P(cancel) × value × recoverability(month)` was tested. It wins on one split and loses on
+another, identically for both model families, because the answer depends on whether the test window
+contains the Nov–Feb trough. The simpler rule is adopted on the pipeline's own split; the comparison
+is reported on every run rather than settled by assertion. Recorded in §0 of the notebook as
+unresolved.
 
 **Where it does appear — the evaluation ground truth.** `realised_loss_per_booking` uses Rule B,
 `min(C, E)`, so a cancellation on a night that ended full contributes ~$0 and one on a soft night
@@ -450,16 +449,15 @@ model finds the costly cancellations or merely the frequent ones:
 
 | Notice at cancellation | Realised loss | **Share captured @10% budget** |
 |---|---|---|
-| 0–3 days | $85,589 | **20.4%** |
-| 4–7 days | $60,313 | **14.6%** |
-| 8–14 days | $140,283 | 28.9% |
-| 15–30 days | $196,794 | 37.1% |
-| 31–60 days | $223,136 | 45.5% |
-| 60+ days | $315,916 | **54.4%** |
+| 0–3 days | $60,225 | **22.6%** |
+| 4–7 days | $39,251 | **25.1%** |
+| 8–14 days | $98,046 | 32.9% |
+| 15–30 days | $137,804 | 36.8% |
+| 31–60 days | $149,008 | 48.4% |
+| 60+ days | $188,526 | **60.5%** |
 
-**The model is markedly worse at the short-notice end** — capturing 15–20% of loss inside 7 days
-against 46–54% beyond 30. (Gradient boosting is somewhat better here, 24.0% in the 0–3 day band
-against logistic's 20.4%, which is the strongest argument in its favour — see §8.1.) It finds the cancellations that were always going to be visible early, and
+**The model is markedly worse at the short-notice end** — capturing 23–25% of loss inside 7 days
+against 48–61% beyond 30. The gradient is monotonic across all six bands. It finds the cancellations that were always going to be visible early, and
 misses precisely the least recoverable ones. That is a genuine limitation, not a tuning problem: the
 features simply do not contain the information.
 
@@ -475,6 +473,8 @@ is written to `metrics.json` on every run rather than computed once and forgotte
 |---|---|---|---|---|
 | Airport Hotel | 5,324 | 25.6% | 0.626 | 0.860 |
 | City Hotel | 9,667 | 29.6% | 0.564 | 0.804 |
+
+*(These are unchanged by the attribution fix — they are classification metrics, not loss-weighted.)*
 
 The model works noticeably better at the Airport Hotel. Worth knowing before rollout, since the two
 reservations teams are separate.
@@ -515,12 +515,11 @@ is not indispensable.
 **Cold start.** New agents, countries and promo codes are folded into `OTHER_*` rather than raising, so
 scoring degrades gracefully instead of failing.
 
-**Two triggers to revisit the model choice.** Logistic regression was chosen over gradient boosting
-because the two tied on the business metric at a 10% budget (§8.1). Boosting becomes the better
-choice if either condition changes: the desk's intervention budget moves to ~20%, where its advantage
-is statistically significant; or the short-notice blind spot becomes the operational priority, where
-it captures 24.0% against logistic's 20.4%. Both models are evaluated on every run, so the comparison
-stays current rather than being a one-off decision frozen in a README.
+**Revisit the model choice if the budget moves.** Logistic regression was chosen over gradient
+boosting because the two are statistically indistinguishable on the business metric at every budget
+tested (§8.1). Boosting's lean is largest around a 20% budget, so if the desk's capacity moves that
+way the comparison is worth re-running. Both models are evaluated on every run, so it stays current
+rather than being a one-off decision frozen in a README.
 
 ---
 

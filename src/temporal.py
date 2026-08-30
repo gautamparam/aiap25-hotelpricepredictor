@@ -48,6 +48,11 @@ def explode_room_nights(
     out = base[keep].loc[base.index.repeat(nights)].copy()
     offset = out.groupby(level=0).cumcount()
     out["date"] = out["arrival_date"] + pd.to_timedelta(offset, unit="D")
+    # Carry the originating booking's index explicitly. Reconstructing it later
+    # with np.repeat over the *unfiltered* frame is unsafe: `stayable` drops
+    # rows, and any downstream merge can drop more, so a positional rebuild
+    # silently attaches room-nights to the wrong booking.
+    out["booking_index"] = out.index
     return out.reset_index(drop=True)
 
 

@@ -68,12 +68,10 @@ def realised_loss_per_booking(modelled: pd.DataFrame, panel: pd.DataFrame) -> pd
         return pd.Series(0.0, index=modelled.index)
 
     room_nights = lost_room_nights(modelled, panel)
-    # explode_room_nights emits stay nights in booking order, so repeating each
-    # booking's index by its night count re-attaches rows to their booking.
-    owner = np.repeat(cancelled.index.values,
-                      cancelled["total_nights"].astype(int).values)[:len(room_nights)]
-    per_booking = (room_nights.assign(_owner=owner)
-                   .groupby("_owner")
+    # Group on the booking index carried through the explosion. Rebuilding it
+    # positionally would misattribute: `stayable` and the panel merge each drop
+    # rows, so the room-night order no longer lines up with the booking order.
+    per_booking = (room_nights.groupby("booking_index")
                    .apply(lambda g: (g["p_lost"] * g["adr"]).sum(), include_groups=False))
     return modelled.index.map(per_booking).to_series(index=modelled.index).fillna(0.0)
 
