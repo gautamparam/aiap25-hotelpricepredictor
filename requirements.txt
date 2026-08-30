@@ -1,0 +1,9 @@
+# Pipeline dependencies only. Notebook-only packages (matplotlib, seaborn,
+# jupyter) are deliberately excluded: src/ does not import them, and adding
+# them would slow the GitHub Action and widen the surface for install failures.
+pandas==2.3.3
+numpy==2.2.6
+scikit-learn==1.7.2
+PyYAML==6.0.3
+joblib==1.5.3
+tabulate==0.10.0

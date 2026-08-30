@@ -1,0 +1,98 @@
+# Travelers' Inn cancellation-risk pipeline — configuration.
+#
+# Every value here is a decision, and each carries the eda.ipynb section that
+# justifies it. Overrides on the command line take precedence:
+#     python -m src.pipeline --set model.name=logistic --set tuning.enabled=true
+
+random_seed: 42
+
+data:
+  # null -> data/hotel.db, then ./hotel.db. The assessment brief specifies both
+  # locations in different sentences, so both are supported.
+  # $TI_DB_PATH overrides this.
+  db_path: null
+
+population:
+  # deposit_type == "NON REFUND" marks tour-operator allotment holds, released
+  # ~99.4% of the time (section 8.1). Their outcome is effectively determined,
+  # so they belong to an operational rule rather than a classifier. Set false
+  # to run the ablation.
+  exclude_block_bookings: true
+  # The Feb-Mar 2024 demand event is a distinct pricing regime (section 6.2).
+  # Kept in by default and flagged as a feature, so the model can learn that
+  # such periods behave differently rather than never having seen one.
+  exclude_event_period: false
+
+features:
+  # Clip rather than drop: the tail above $2,000 is almost entirely the March
+  # 2024 event, which is real demand, not error (sections 3.3, 6.2).
+  winsorise_adr_quantile: 0.99
+  # Cleaning collapses 140 raw country values to 18; the tail is still thin.
+  country_top_n: 15
+  agent_top_n: 20
+  # days_in_waiting_list is admissible but ~98% confounded with market_segment
+  # (section 8.6). Flip to false to run the ablation.
+  include_waiting_list: true
+
+split:
+  # Chronological, never random: the model scores a booking when it is created,
+  # so evaluation must train on the past and test on the future (section 12).
+  strategy: temporal
+  date_column: booking_date
+  train_frac: 0.70
+  val_frac: 0.15
+
+model:
+  # majority | dummy_stratified | lead_time_rule | value_sort | logistic
+  # | random_forest | hist_gbm
+  #
+  # Logistic regression is the production default, and that is a change from
+  # the original choice. Gradient boosting won the statistical metrics
+  # (PR-AUC 0.623 vs 0.581) but the two were statistically indistinguishable on
+  # the metric that decides anything — loss captured at the 10% intervention
+  # budget, where the bootstrap CI for the difference straddles zero. Logistic
+  # is better calibrated, more stable across cut dates, 93x smaller, and
+  # interpretable. See README section 8 for the full comparison.
+  #
+  # Switch back with: --set model.name=hist_gbm
+  name: logistic
+  # The decision rule multiplies probability by dollars, so calibration changes
+  # the ranking rather than merely rescaling it (section 9.5).
+  calibrate: true
+  params:
+    # L2 with balanced class weights: the 28% base rate would otherwise pull
+    # the decision boundary towards the majority class.
+    C: 1.0
+    max_iter: 2000
+    class_weight: balanced
+
+tuning:
+  # Off by default: RandomizedSearchCV with time-series folds adds minutes to
+  # every CI run. The values above are what the search selected.
+  enabled: false
+  n_iter: 25
+  cv_splits: 4
+  grids:
+    hist_gbm:
+      learning_rate: [0.03, 0.05, 0.1, 0.2]
+      max_leaf_nodes: [15, 31, 63]
+      min_samples_leaf: [20, 40, 80]
+      l2_regularization: [0.0, 0.1, 1.0]
+    logistic:
+      C: [0.01, 0.1, 1.0, 10.0]
+    random_forest:
+      n_estimators: [200, 400]
+      min_samples_leaf: [2, 5, 10]
+
+evaluation:
+  # Reported as a curve, not a point: the shape matters more than any single
+  # operating point when the budget is a business constraint.
+  budgets: [0.05, 0.10, 0.20, 0.30]
+  primary_metric: average_precision
+
+intervention:
+  # Share of bookings the reservations desk can act on. Sets the threshold.
+  budget: 0.10
+
+output:
+  dir: artifacts
