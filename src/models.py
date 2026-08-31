@@ -15,16 +15,19 @@ Two entries are not machine-learning models at all:
 
 ``value_sort``
     Ranks by booking value with no model whatsoever. This is the bar that
-    matters: ``eda.ipynb`` section 9.6 measured it capturing 30.3% of realised
-    loss at a 10% intervention budget, against 38.6% for the fitted model. A
-    model that cannot beat it is not worth deploying, whatever its AUC, so it
-    belongs in the registry rather than in a footnote.
+    matters: it captures 35.6% of realised loss at a 10% intervention budget,
+    against 43.5% for the fitted model. A model that cannot beat it is not
+    worth deploying, whatever its AUC, so it belongs in the registry rather
+    than in a footnote.
 
-Gradient boosting is the expected winner and the EDA says why: no numeric
+Gradient boosting was the expected winner and the EDA says why: no numeric
 feature exceeds |0.30| Spearman correlation with the target (section 3.6),
 while categorical levels differ four-fold — so the signal lives in
 interactions between categoricals, which is precisely what a boosted tree
-ensemble captures and a linear model does not.
+ensemble captures and a linear model does not. Despite that expectation the
+default is ``logistic``: the two are statistically indistinguishable on loss
+captured at the intervention budget, and the simpler model is better
+calibrated, smaller and interpretable (README section 8.1).
 
 ``HistGradientBoostingClassifier`` is chosen over XGBoost or LightGBM
 deliberately. It ships inside scikit-learn, so ``requirements.txt`` stays
@@ -185,7 +188,8 @@ def _ordinal_encoder(builder: FeatureBuilder) -> ColumnTransformer:
 
 
 def _hist_gbm(params: dict[str, Any], builder: FeatureBuilder) -> Pipeline:
-    """Gradient boosting with native categorical support — the primary model."""
+    """Gradient boosting with native categorical support — the strongest model
+    on the statistical metrics; retained in the registry, not the default."""
     defaults = dict(max_iter=300, learning_rate=0.1, max_leaf_nodes=31,
                     min_samples_leaf=40, l2_regularization=0.0, random_state=42)
     defaults.update(params)

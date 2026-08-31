@@ -52,7 +52,7 @@ the loss is real but far smaller than the raw numbers suggest: **$37.6M of gross
 │   ├── evaluate.py               statistical and business metrics
 │   ├── profiling.py              before/after data-processing report
 │   └── pipeline.py               orchestration and CLI entry point
-├── tests/                        48 unit tests (pytest)
+├── tests/                        50 unit tests (pytest)
 ├── data/                         hotel.db lives here — NOT committed
 └── artifacts/                    pipeline outputs — NOT committed
 ```
@@ -102,7 +102,7 @@ bash run.sh --compare-all                          # every model in the registry
 | `features.country_top_n` / `agent_top_n` | `15` / `20` | Category vocabulary sizes |
 | `features.include_waiting_list` | `true` | Ablation switch for a confounded feature (§8.6) |
 | `split.train_frac` / `val_frac` | `0.70` / `0.15` | Chronological split points |
-| `model.name` | `hist_gbm` | `majority`, `value_sort`, `logistic`, `random_forest`, `hist_gbm` |
+| `model.name` | `logistic` | `majority`, `value_sort`, `logistic`, `random_forest`, `hist_gbm` |
 | `model.calibrate` | `true` | Isotonic probability calibration |
 | `tuning.enabled` | `false` | Randomised search over time-ordered folds |
 | `intervention.budget` | `0.10` | Share of bookings the desk can act on; sets the threshold |
@@ -110,7 +110,7 @@ bash run.sh --compare-all                          # every model in the registry
 ### Tests
 
 ```bash
-pytest tests/ -q      # 48 tests, ~4 seconds
+pytest tests/ -q      # 50 tests, ~4 seconds
 ```
 
 Deliberately not wired into `run.sh`, which stays a pipeline runner.
@@ -381,10 +381,9 @@ about *how much* that cancellation costs.
 
 Reproduce with `bash run.sh --compare-all`.
 
-Worth noting rather than hiding: **logistic regression captures slightly more loss at a 10% budget
-than random forest does, despite a lower PR-AUC.** Ranking quality and loss capture are not the same
-thing — the latter depends on getting the *expensive* bookings right, not merely the most numerous.
-Gradient boosting leads on both, which is why it is chosen, but the discrepancy is a reminder that a
+Worth noting rather than hiding: **the ordering by PR-AUC is not the ordering by loss captured at a
+10% budget.** Ranking quality and loss capture are not the same thing — the latter depends on getting
+the *expensive* bookings right, not merely the most numerous. The discrepancy is a reminder that a
 single metric would have picked differently.
 
 **The chosen model is not the one that tops the statistical metrics.** Gradient boosting leads on
@@ -528,6 +527,6 @@ rather than being a one-off decision frozen in a README.
 - **`eda.ipynb`** — 173 cells, executed with outputs saved (the database is not committed, so an
   unexecuted notebook would open empty). Sections 0–12; §0 lists the seven decisions the notebook
   returns and the seven approaches that were tried and rejected.
-- **`prompt_chat_history.md`** — ~79 KB across three sessions. Large but readable as one file, so it is
+- **`prompt_chat_history.md`** — ~118 KB across six sessions. Large but readable as one file, so it is
   kept inline rather than split into a folder.
 - **`artifacts/`** — regenerated on every run; not committed.

@@ -20,7 +20,8 @@ Stages, in order:
    booking, the ground truth for the business metric (:mod:`src.temporal`).
 5. **Split** — chronologically on ``booking_date`` (:mod:`src.splits`).
 6. **Fit** — build and train the configured model (:mod:`src.models`).
-7. **Calibrate** — optional isotonic calibration on validation.
+7. **Calibrate** — optional isotonic calibration, fitted over time-ordered CV
+   folds across the combined train + validation slice.
 8. **Evaluate** — statistical and business metrics (:mod:`src.evaluate`).
 9. **Persist** — model, metrics, feature importance, data-processing report.
 """
@@ -302,12 +303,9 @@ class CancellationPipeline:
         self.split()
 
         chosen = self.config.get("model.name", "hist_gbm")
-        # The two baselines are always evaluated: without them the reported
-        # numbers have no reference point, and section 9.6 showed the value
-        # sort alone captures 30.3% of loss with no model at all.
         # The baseline set is always evaluated. Without it the headline number
         # has no reference point, and section 9.6 showed a value sort alone
-        # captures ~30% of the loss with no model at all.
+        # captures 35.6% of the loss with no model at all.
         baselines = ["majority", "dummy_stratified", "lead_time_rule", "value_sort"]
         names = list(REGISTRY) if compare_all else baselines + [chosen]
         names = list(dict.fromkeys(names))
